@@ -31,9 +31,8 @@ TARGET_MOVIE_KEYWORD = "암살자들"
 TARGET_VIDEO_CODE = "0023"  # GV
 
 # 한 날짜/한 회차 전용 감시.
-# 평소 10초, 매시 :58~:02 / :28~:32 구간은 5초.
-NORMAL_POLL_SECONDS = 10.0
-FAST_POLL_SECONDS = 5.0
+# 목표 회차는 5초 고정 조회. HTTP 429 시 기존대로 60초 쿨다운.
+POLL_SECONDS = 5.0
 SUMMARY_SECONDS = 600.0
 RUN_SECONDS = int(os.environ.get("RUN_SECONDS", "120"))
 START_DELAY = float(os.environ.get("START_DELAY", "0"))
@@ -139,15 +138,26 @@ def send_discord(row):
     free = clean(row.get("frSeatCnt"))
     url = booking_url(row)
 
-    title = expo or f"{movie}(GV)"
+    title = expo or movie
     seat_line = f"\n🎫 현재 잔여좌석: {free}석" if free != "" else ""
+
+    video_code = normalize_video_code(row.get("videoAddexpCd"))
+    video_name = clean(row.get("videoAddexpCdNm"))
+
+    if video_code == TARGET_VIDEO_CODE:
+        class_line = "🏷️ 분류: **GV (0023) 확인됨**"
+    elif video_code:
+        class_line = f"🏷️ 분류: **{video_name or video_code} ({video_code})** · GV 코드 아직 미확인"
+    else:
+        class_line = "🏷️ 분류: **GV 코드 아직 미부여** · 목표 회차 선감지"
 
     mention = f"<@{DISCORD_USER_ID}>\n" if DISCORD_USER_ID else ""
     message = (
-        f"{mention}🚨 **왕십리 목표 GV 회차 등록 감지**\n"
+        f"{mention}🚨 **왕십리 암살자들 목표 회차 감지**\n"
         f"🎬 **{title}**\n"
         f"📅 {pretty_date(TARGET_DATE)}\n"
-        f"🕕 **{start}-{end} · {screen}**"
+        f"🕕 **{start}-{end} · {screen}**\n"
+        f"{class_line}"
         f"{seat_line}\n"
         f"🎟️ {url}"
     )
@@ -203,6 +213,18 @@ def fetch_rows(session):
 
 
 def is_target(row):
+    """
+    GV 코드(0023)가 붙기 전이라도 목표 회차 자체가 생성되면 즉시 감지한다.
+
+    고정 조건:
+      - 왕십리
+      - 2026-09-26
+      - 18:10
+      - 7관
+      - 영화명에 '암살자들'
+
+    videoAddexpCd는 알림 조건이 아니라 상태 표시용으로만 사용한다.
+    """
     if clean(row.get("siteNo")) not in ("", SITE_NO):
         return False
 
@@ -210,9 +232,6 @@ def is_target(row):
         return False
 
     if digits(row.get("scnsrtTm")) != TARGET_TIME:
-        return False
-
-    if normalize_video_code(row.get("videoAddexpCd")) != TARGET_VIDEO_CODE:
         return False
 
     movie_text = " ".join([
@@ -241,24 +260,12 @@ def scan_once(session):
     return (hits[0] if hits else None), len(rows)
 
 
-def current_poll_seconds(now):
-    """
-    평소에는 10초.
-    오픈 가능성이 높은 정각/30분 전후 2분 구간은 5초.
-      :58, :59, :00, :01, :02
-      :28, :29, :30, :31, :32
-    """
-    if now.minute in {58, 59, 0, 1, 2, 28, 29, 30, 31, 32}:
-        return FAST_POLL_SECONDS
-    return NORMAL_POLL_SECONDS
-
-
 def main():
     print("=" * 100)
     print("CGV WANGSIMNI SINGLE GV WATCH")
     print("TARGET:", TARGET_MOVIE_KEYWORD, pretty_date(TARGET_DATE), pretty_time(TARGET_TIME), TARGET_SCREEN_KEYWORD)
-    print("MATCH: videoAddexpCd=0023 + exact date/time + 7관 + movie keyword")
-    print("POLL: normal 10s / :58~:02 & :28~:32 = 5s / exact :00,:30 forced scan")
+    print("MATCH: exact date/time + 7관 + movie keyword (GV 0023은 표시용, 감지 필수조건 아님)")
+    print("POLL: fixed 5s / exact :00,:30 forced scan / HTTP 429 => 60s cooldown")
     print("SITE:", SITE_NO, SITE_NAME)
     print("CUST_NO:", "SET" if CGV_CUST_NO else "MISSING")
     print("WEBHOOK:", "SET" if CY_WEBHOOK else "MISSING")
@@ -348,15 +355,14 @@ def main():
                         return
                 else:
                     # 미감지 로그는 매 조회마다 출력하지 않는다.
-                    # 실제 조회는 기존 주기(평소 10초 / 정각·30분 주변 5초) 그대로 유지한다.
+                    # 실제 조회는 5초 고정으로 계속 수행한다.
                     pass
 
             except Exception as e:
                 errors += 1
                 print("❌ SCAN ERROR:", repr(e))
 
-            poll_seconds = current_poll_seconds(now_kst())
-            next_regular = time.monotonic() + poll_seconds
+            next_regular = time.monotonic() + POLL_SECONDS
 
         if mono - last_summary >= SUMMARY_SECONDS:
             print(
