@@ -333,10 +333,9 @@ def main():
                         print("✅ 목표 회차 감지/알림/상태저장 완료. 감시 종료.")
                         return
                 else:
-                    print(
-                        f"🔎 NOT FOUND | {now.strftime('%H:%M:%S')} KST | "
-                        f"rows={total} | target={TARGET_DATE} {TARGET_TIME} {TARGET_SCREEN_KEYWORD}"
-                    )
+                    # 미감지 로그는 매 조회마다 출력하지 않는다.
+                    # 실제 조회는 기존 주기(평소 10초 / 정각·30분 주변 5초) 그대로 유지한다.
+                    pass
 
             except Exception as e:
                 errors += 1
@@ -347,7 +346,7 @@ def main():
 
         if mono - last_summary >= SUMMARY_SECONDS:
             print(
-                f"💚 감시중 | 최근 누적 조회 {scans}회 | 오류 {errors} | "
+                f"💚 NOT FOUND · 정상 감시중 | 누적 조회 {scans}회 | 오류 {errors} | "
                 f"목표 {pretty_date(TARGET_DATE)} {pretty_time(TARGET_TIME)} {TARGET_SCREEN_KEYWORD}"
             )
             last_summary = mono
