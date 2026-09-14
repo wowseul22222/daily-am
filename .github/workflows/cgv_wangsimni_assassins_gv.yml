@@ -1,0 +1,93 @@
+name: CGV Wangsimni Assassins GV Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    # KST 06:00 시작 확인
+    - cron: "0 21 * * *"
+
+    # 이후 실행 교체는 :00 / :30을 피해서 진행
+    - cron: "3 21 * * *"   # KST 06:03
+    - cron: "33 2 * * *"   # KST 11:33
+    - cron: "3 8 * * *"    # KST 17:03
+    - cron: "33 13 * * *"  # KST 22:33
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cgv-wangsimni-assassins-gv-watch
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependency
+        run: python -m pip install requests
+
+      - name: Set monitoring duration
+        id: duration
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seconds=180" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ github.event.schedule }}" in
+              "0 21 * * *")
+                echo "seconds=120" >> "$GITHUB_OUTPUT"
+                ;;
+              "3 21 * * *")
+                echo "seconds=19680" >> "$GITHUB_OUTPUT"
+                ;;
+              "33 2 * * *")
+                echo "seconds=19680" >> "$GITHUB_OUTPUT"
+                ;;
+              "3 8 * * *")
+                echo "seconds=19680" >> "$GITHUB_OUTPUT"
+                ;;
+              "33 13 * * *")
+                echo "seconds=5160" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "seconds=180" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          fi
+
+      - name: Run target GV watch
+        env:
+          CGV_CUST_NO: ${{ secrets.CGV_CUST_NO }}
+          CY_WEBHOOK: ${{ secrets.CY_WEBHOOK }}
+          DISCORD_MENTION_ID: ${{ secrets.DISCORD_MENTION_ID }}
+          RUN_SECONDS: ${{ steps.duration.outputs.seconds }}
+        run: python -u cgv_wangsimni_assassins_gv.py
+
+      - name: Save alert state
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add cgv_wangsimni_assassins_gv_state.json 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "No state changes"
+          else
+            git commit -m "Update Wangsimni Assassins GV watch state"
+            git pull --rebase
+            git push
+          fi
