@@ -3,14 +3,15 @@ name: CGV Wangsimni Assassins GV Watch
 on:
   workflow_dispatch:
   schedule:
-    # KST 06:00 시작 확인
-    - cron: "0 21 * * *"
+    # GitHub cron은 UTC.
+    # KST 05:57에 미리 띄워 Python이 06:00부터 감시 시작.
+    - cron: "57 20 * * *"  # KST 05:57
 
-    # 이후 실행 교체는 :00 / :30을 피해서 진행
-    - cron: "3 21 * * *"   # KST 06:03
-    - cron: "33 2 * * *"   # KST 11:33
-    - cron: "3 8 * * *"    # KST 17:03
-    - cron: "33 13 * * *"  # KST 22:33
+    # 이후는 5시간 간격, 모두 :13에 교체
+    - cron: "13 21 * * *"  # KST 06:13
+    - cron: "13 2 * * *"   # KST 11:13
+    - cron: "13 7 * * *"   # KST 16:13
+    - cron: "13 12 * * *"  # KST 21:13
 
 permissions:
   contents: write
@@ -43,26 +44,20 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "seconds=180" >> "$GITHUB_OUTPUT"
+            # 수동 실행: 5시간
+            echo "seconds=18000" >> "$GITHUB_OUTPUT"
           else
             case "${{ github.event.schedule }}" in
-              "0 21 * * *")
-                echo "seconds=120" >> "$GITHUB_OUTPUT"
+              "57 20 * * *")
+                # Python이 06:00까지 대기한 뒤 06:12까지 감시
+                echo "seconds=720" >> "$GITHUB_OUTPUT"
                 ;;
-              "3 21 * * *")
-                echo "seconds=19680" >> "$GITHUB_OUTPUT"
-                ;;
-              "33 2 * * *")
-                echo "seconds=19680" >> "$GITHUB_OUTPUT"
-                ;;
-              "3 8 * * *")
-                echo "seconds=19680" >> "$GITHUB_OUTPUT"
-                ;;
-              "33 13 * * *")
-                echo "seconds=5160" >> "$GITHUB_OUTPUT"
+              "13 21 * * *"|"13 2 * * *"|"13 7 * * *"|"13 12 * * *")
+                # 각 작업 5시간. 마지막 21:13 작업은 Python이 자정에 자체 종료.
+                echo "seconds=18000" >> "$GITHUB_OUTPUT"
                 ;;
               *)
-                echo "seconds=180" >> "$GITHUB_OUTPUT"
+                echo "seconds=18000" >> "$GITHUB_OUTPUT"
                 ;;
             esac
           fi
