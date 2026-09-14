@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
   schedule:
     # GitHub cron은 UTC.
-    # KST 05:57에 미리 띄워 Python이 06:00부터 감시 시작.
+    # KST 05:57에 미리 시작해서 Python이 06:00까지 대기.
     - cron: "57 20 * * *"  # KST 05:57
 
-    # 이후는 5시간 간격, 모두 :13에 교체
+    # KST 기준 5시간 간격, 모두 :13에 새 실행
     - cron: "13 21 * * *"  # KST 06:13
     - cron: "13 2 * * *"   # KST 11:13
     - cron: "13 7 * * *"   # KST 16:13
@@ -18,12 +18,13 @@ permissions:
 
 concurrency:
   group: cgv-wangsimni-assassins-gv-watch
-  cancel-in-progress: false
+  # 수동 실행이든 이전 예약 실행이든, 새 실행이 시작되면 즉시 기존 실행 취소.
+  cancel-in-progress: true
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 380
 
     steps:
       - name: Checkout
@@ -44,20 +45,20 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # 수동 실행: 5시간
-            echo "seconds=18000" >> "$GITHUB_OUTPUT"
+            # 수동 실행도 길게 유지. 다음 예약 실행이 들어오면 concurrency가 끊고 교체.
+            echo "seconds=21600" >> "$GITHUB_OUTPUT"
           else
             case "${{ github.event.schedule }}" in
               "57 20 * * *")
-                # Python이 06:00까지 대기한 뒤 06:12까지 감시
-                echo "seconds=720" >> "$GITHUB_OUTPUT"
+                # 05:57 시작 → Python이 06:00부터 감시 → 06:13 실행이 들어오면 교체
+                echo "seconds=3600" >> "$GITHUB_OUTPUT"
                 ;;
               "13 21 * * *"|"13 2 * * *"|"13 7 * * *"|"13 12 * * *")
-                # 각 작업 5시간. 마지막 21:13 작업은 Python이 자정에 자체 종료.
-                echo "seconds=18000" >> "$GITHUB_OUTPUT"
+                # 6시간 여유를 주고, 실제 교체는 다음 :13 실행이 시작될 때 수행
+                echo "seconds=21600" >> "$GITHUB_OUTPUT"
                 ;;
               *)
-                echo "seconds=18000" >> "$GITHUB_OUTPUT"
+                echo "seconds=21600" >> "$GITHUB_OUTPUT"
                 ;;
             esac
           fi
