@@ -285,6 +285,14 @@ def main():
         print("ℹ️ 목표 날짜가 지나 감시를 종료합니다.")
         return
 
+    # 운영시간은 KST 06:00~24:00.
+    # 첫 워크플로는 05:57에 미리 띄우되, 06:00 전에는 API 요청을 하지 않는다.
+    while now_kst().hour < 6:
+        now = now_kst()
+        target = now.replace(hour=6, minute=0, second=0, microsecond=0)
+        wait_seconds = max(0.5, min(5.0, (target - now).total_seconds()))
+        time.sleep(wait_seconds)
+
     session = requests.Session()
     started = time.monotonic()
     last_summary = started
@@ -295,6 +303,12 @@ def main():
 
     while time.monotonic() - started < RUN_SECONDS:
         now = now_kst()
+
+        # 자정이 되면 종료. 00:00~05:59에는 감시하지 않는다.
+        if now.hour < 6:
+            print("🌙 KST 자정 도달 - 오늘 감시 종료")
+            return
+
         mono = time.monotonic()
 
         forced_key = None
